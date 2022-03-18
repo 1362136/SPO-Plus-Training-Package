@@ -85,7 +85,7 @@ def shortest_paths_oracle_2(d, c):
 
 
 def sample_data_batch_SGD(size, n):
-    sampled_index = torch.randint(high=n, size=(5,))
+    sampled_index = torch.randint(high=n, size=(size,))
     return sampled_index
 
 
@@ -113,7 +113,7 @@ def SPO_plus_loss(c_pred, M, sample_index):
 
 
 def train_batch_SPO_plus(X,M,model,opt,batch_size):
-    sample_index = sample_data_batch_SGD(batch_size,100)
+    sample_index = sample_data_batch_SGD(batch_size,1300)
     pred = torch.t(model(torch.t(X)))
     l = SPO_plus_loss(pred, M, sample_index)
     l.backward()
@@ -121,7 +121,7 @@ def train_batch_SPO_plus(X,M,model,opt,batch_size):
     opt.zero_grad()
 
 def train_batch(X,c,model,opt,batch_size,loss_func):
-    sample_index = sample_data_batch_SGD(batch_size, 100)
+    sample_index = sample_data_batch_SGD(batch_size, 1300)
     pred = model(torch.t(torch.index_select(X,dim = 1,index = sample_index)))
     c_batch = torch.t(torch.index_select(c,dim = 1,index = sample_index))
     l = loss_func(pred,c_batch)
@@ -130,39 +130,62 @@ def train_batch(X,c,model,opt,batch_size,loss_func):
     opt.zero_grad()
 
 
-def fit_and_evaluate_SPO_plus(model,X,output,n_epochs,batch_size,optimizer):
+def fit_and_evaluate_SPO_plus(model,X_train,X_test,c_train,c_test,n_epochs,batch_size,optimizer,scheduler):
     errors = []
     epoch = []
+    #X_test, X_valid = torch.split(X_test,[350,350],dim=1)
+    #c_test, c_valid = torch.split(c_test,[350,350],dim=1)
     M = []  # List used to cache optimization information for each element in the output. Eases computation time
     B = torch.zeros(n_epochs, 40, 4)  # The parameters of the model listed for each epoch.
     running_avg_B = torch.zeros(n_epochs, 40, 4)
-    for i in range(output.size()[1]):
-        M.append(shortest_paths_oracle_2(5, output[:, i:i + 1].flatten()))
+    lr_list = []
+    model_2 = nn.Linear(4, 40, bias=False)
+    valid_loss = 0
+    best_parameter = running_avg_B[0]
+    for i in range(c_train.size()[1]):
+        M.append(shortest_paths_oracle_2(5, c_train[:, i:i + 1].flatten()))
     for i in range(n_epochs):
         for j in model.parameters():
-            B[i] = j.detach()
-        running_avg_B[i] = (1 / (i + 1)) * torch.sum(B, dim=0)
+            lr_list.append(scheduler.optimizer.param_groups[0]['lr'])
+            B[i] = torch.tensor([lr_list[i]])*j.detach()
+        running_avg_B[i] = (1 / sum(lr_list)) * torch.sum(B, dim=0)
+        #if i == 0:
+            #model_2.weight = torch.nn.Parameter(running_avg_B[i])
+            #valid_loss = SPO_loss(X_valid, c_valid, model_2)
+            #best_parameter = running_avg_B[i]
         #with torch.no_grad():
             #epoch.append(i)
             #pred = torch.t(model(torch.t(X)))
             #errors.append(SPO_plus_loss_function_epoch(pred, M))
-        train_batch_SPO_plus(X, M, model, optimizer, batch_size)
+        train_batch_SPO_plus(X_train, M, model, optimizer, batch_size)
         #for i in model.parameters():
-            #i = running_avg_B[n_epochs-1]
-        model.weight = torch.nn.Parameter(running_avg_B[n_epochs-1])
-    return normalized_SPO_loss(X,output,model)
+           #i = running_avg_B[n_epochs-1]
+        #model_2.weight = torch.nn.Parameter(running_avg_B[i])
+        #if valid_loss > SPO_loss(X_valid, c_valid, model_2):
+            #best_parameter = running_avg_B[i]
+            #valid_loss = SPO_loss(X_valid, c_valid, model_2)
+        scheduler.step()
+    model.weight = torch.nn.Parameter(running_avg_B[n_epochs-1])
+    return normalized_SPO_loss(X_test,c_test,model)
 
-def fit_and_evaluate(model,X,output,n_epochs,batch_size,optimizer,loss):
+def fit_and_evaluate(model,X_train,X_test,c_train,c_test,n_epochs,batch_size,optimizer,loss):
     errors = []
     epoch = []
     for i in range(n_epochs):
         #with torch.no_grad():
             #epoch.append(i)
             #errors.append(loss_function(model = model,loss_func = loss,X = X,c = output))
-        train_batch(X = X,c = output,model = model,opt = optimizer,batch_size = batch_size,loss_func = loss)
-    return normalized_SPO_loss(X,output,model)
+        train_batch(X = X_train,c = c_train,model = model,opt = optimizer,batch_size = batch_size,loss_func = loss)
+    return normalized_SPO_loss(X_test,c_test,model)
 
 def normalized_SPO_loss(X,c,model):
+    M = []
+    for i in range(c.size()[1]):
+        M.append(shortest_paths_oracle_2(5, c[:,i:i+1].flatten())[2])
+    return SPO_loss(X,c,model) / sum(M)
+
+
+def SPO_loss(X,c,model):
     M = []
     for i in range(c.size()[1]):
         M.append(shortest_paths_oracle_2(5, c[:,i:i+1].flatten())[2])
@@ -170,7 +193,7 @@ def normalized_SPO_loss(X,c,model):
     for i in range(c.size()[1]):
         loss += torch.dot(shortest_paths_oracle_2(5, model(torch.t(X))[i:i+1,:].flatten())[1],c[:,i:i+1].flatten()) \
                 - M[i]
-    return loss / sum(M)
+    return loss
 
 
 def SPO_experiment(degree):
@@ -179,19 +202,25 @@ def SPO_experiment(degree):
     norm_loss_3 = []
     for i in range(50):
         learning_rate = 0.1
-        X, output = generate_data(n=1000, p=4, d=5, deg=degree, epsilon=1)
+        X, output = generate_data(n=2000, p=4, d=5, deg=degree, epsilon=1)
+        X_train = X[:,0:1300]
+        X_test = X[:,1300:]
+        c_train = output[:,0:1300]
+        c_test = output[:,1300:]
         model_1 = nn.Linear(4, 40, bias=False)
         model_2 = nn.Linear(4, 40, bias=False)
         model_3 = nn.Linear(4, 40, bias=False)
-        opt_1 = optim.Adam(model_1.parameters())
-        opt_2 = optim.Adam(model_2.parameters())
-        opt_3 = optim.Adam(model_3.parameters())
+        opt_1 = optim.Adam(model_1.parameters(),lr=0.1)
+        opt_2 = optim.Adam(model_2.parameters(),lr=0.1)
+        opt_3 = optim.Adam(model_3.parameters(),lr=0.1,weight_decay=0.1)
+        lambda_1 = lambda epoch : (1 / math.sqrt(epoch + 1))
+        sched = optim.lr_scheduler.LambdaLR(opt_3,lambda_1)
         MSE = nn.MSELoss(reduction="mean")
         L1 = nn.L1Loss(reduction="mean")
         # weight_matrix  = fit_and_evaluate_SPO_plus(model_1,X,output,500,5,opt)[2]
-        norm_loss_1.append(fit_and_evaluate(model_1, X, output, 500, 5, opt_1, MSE))
-        norm_loss_2.append(fit_and_evaluate(model_2, X, output, 500, 5, opt_2, L1))
-        norm_loss_3.append(fit_and_evaluate_SPO_plus(model_3, X, output, 500, 5, opt_3))
+        norm_loss_1.append(fit_and_evaluate(model_1, X_train, X_test, c_train, c_test, 100, 20, opt_1, MSE))
+        norm_loss_2.append(fit_and_evaluate(model_2, X_train, X_test, c_train, c_test, 100, 20, opt_2, L1))
+        norm_loss_3.append(fit_and_evaluate_SPO_plus(model_3,X_train, X_test, c_train, c_test, 100, 20, opt_3, sched))
         x = len(norm_loss_1)
         return sum(norm_loss_1)/x, sum(norm_loss_2)/x, sum(norm_loss_3)/x
 
@@ -204,7 +233,7 @@ experiment_5 = SPO_experiment(degree = 8)
 
 degrees = [1,2,4,6,8]
 MSE_losses = [experiment_1[0],experiment_2[0],experiment_3[0],experiment_4[0],experiment_5[0]]
-L1_losses = [experiment_1[1],experiment_2[1],experiment_3[1],experiment_4[1],experiment_4[1]]
+L1_losses = [experiment_1[1],experiment_2[1],experiment_3[1],experiment_4[1],experiment_5[1]]
 SPO_plus_losses = [experiment_1[2],experiment_2[2],experiment_3[2],experiment_4[2],experiment_5[2]]
 
 x = np.arange(len(degrees))
