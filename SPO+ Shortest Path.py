@@ -81,7 +81,7 @@ def shortest_paths_oracle_2(d, c):
                      != d*d - 1)
     model.addConstr(quicksum(x[(j,d*d - 1)] for j in grid.predecessors(d*d - 1)) == 1)
     model.optimize()
-    return c.flatten(), torch.tensor([y for y in model.getAttr('X')]), float(model.ObjVal)
+    return c.flatten(), torch.tensor([y for y in model.getAttr('X')]), float(model.ObjVal), model.getAttr('Obj')
 
 
 def sample_data_batch_SGD(size, n):
@@ -225,6 +225,7 @@ def SPO_experiment(degree):
         return sum(norm_loss_1)/x, sum(norm_loss_2)/x, sum(norm_loss_3)/x
 
 
+#print(shortest_paths_oracle_2(2,torch.tensor([1,2,3,4])))
 experiment_1 = SPO_experiment(degree = 1)
 experiment_2 = SPO_experiment(degree = 2)
 experiment_3 = SPO_experiment(degree = 4)
