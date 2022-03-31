@@ -28,16 +28,20 @@ class SPOPlus:
             self.__keys[self.c[i:i+1,:]] = self.optim_model.SingleScenarioModel()
             self.optim_model.ScenarioNumber += 1
 
+
+
+
     def get_output(self):
         '''
         :return: The objective coefficient vectors (tensor) which are the true outputs of the prediction problem
         '''
         return self.c
 
-    def SPO_Plus_Loss(self,c_pred, reduction):
+    def SPO_Plus_Loss(self,c_pred, reduction = 'mean'):
         '''
         :param c_pred: The outputs of the prediction model (tensor)
-        :return: the loss value
+        :param reduction: Determines whether to return total or average loss. Takes values 'mean' or 'sum'.
+        :return: the SPO+ loss value
         '''
         self.dummy_model.setAttr('NumScenarios',c_pred.size()[0])
         self.dummy_model.ScenarioNumber = 0
@@ -55,6 +59,30 @@ class SPOPlus:
             return loss
         elif reduction == 'mean':
             return loss / c_pred.size()[0]
+
+    def SPO_loss(self,c_pred,reduction = 'mean'):
+        '''
+        :param c_pred: The outputs of the prediction model (tensor)
+        :reduction: Determines whether to return total or average loss. Takes values 'mean' or 'sum'.
+        :return: The SPO loss value
+        '''
+        self.dummy_model.setAttr('NumScenarios', c_pred.size()[0])
+        self.dummy_model.ScenarioNumber = 0
+        for i in range(c_pred.size()[0]):
+            self.dummy_model.setAttr('ScenNObj',c_pred[i:i+1,:].flatten().numpy())
+            self.dummy_model.ScenarioNumber += 1
+        self.dummy_model.optimize()
+        loss = 0
+        self.dummy_model.ScenarioNumber = 0
+        for i in range(c_pred.size()[0]):
+            loss += torch.dot(self.c[i:i+1,:].flatten(),self.dummy_model.getAttr('ScenNX')) \
+                    - self.__keys[self.c[i:i+1,:]].getAttr('ObjVal')
+        if reduction == 'sum':
+            return loss
+        elif reduction == 'mean':
+            return loss / c_pred.size()[0]
+
+
 
 
 
