@@ -13,21 +13,24 @@ class SPOPlus:
         :param X_train: Data set that is used for training prediction model
         :param optim_model: A Gurobi Multi-Scenario Model
         '''
-        self.__dict = {}
-        self.__keys = {}
+        self.__x = {}
+        self.__obj_val = {}
         self.X_train = X_train
         optim_model.update()
         self.optim_model = optim_model.copy()
-        optim_model.optimize()
-        optim_model.Params.ScenarioNumber = 0
-        self.__dict[0] = self.optim_model.singleScenarioModel()
-        self.c = torch.tensor(self.optim_model.singleScenarioModel().getAttr('Obj')).view(1, -1)
-        self.__keys[self.c[0:1,:]] = self.optim_model.singleScenarioModel()
+        self.optim_model.optimize()
+        self.optim_model.Params.ScenarioNumber = 0
+        self.__x[0] = self.optim_model.getAttr('ScenNX')
+        self.__obj_val[0] = self.optim_model.getAttr('ScenNObjVal')
+        self.c = torch.tensor(self.optim_model.getAttr('ScenNObj')).view(1, -1)
+        # self.__keys[0] = self.optim_model.singleScenarioModel()
         for i in range(1, X_train.size()[0]):
-            self.__dict[i] = self.optim_model.singleScenarioModel()
-            self.c = torch.cat((self.c, torch.tensor(self.__dict[i].getAttr('Obj')).view(1, -1)),dim=0)
-            self.__keys[self.c[i:i+1,:]] = self.optim_model.singleScenarioModel()
+            self.__x[i] = self.optim_model.getAttr('ScenNX')
+            self.__obj_val[i] = self.optim_model.getAttr('ScenNObjVal')
+            self.c = torch.cat((self.c, torch.tensor(self.optim_model.getAttr('ScenNObj')).view(1, -1)),dim=0)
+            # self.__keys[i] = self.optim_model.singleScenarioModel()
             self.optim_model.Params.ScenarioNumber += 1
+        #print(self.__dict[0])
 
     def get_output(self):
         '''
@@ -46,22 +49,25 @@ class SPOPlus:
         dummy_model.setAttr('NumScenarios',c_pred.size()[0])
         dummy_model.params.ScenarioNumber = 0
         for i in range(c_pred.size()[0]):
-            dummy_model.setObjective(quicksum((-1*self.c[i:i+1,:] + 2*c_pred[i:i+1,:]).flatten().tolist()[k]
+            dummy_model.setObjective(quicksum((-1*c[i:i+1,:] + 2*c_pred[i:i+1,:]).flatten().tolist()[k]
                                               * dummy_model.getVars()[k]
                                               for k in range(c_pred.size()[0])),GRB.MINIMIZE)
             dummy_model.params.ScenarioNumber += 1
         dummy_model.optimize()
+        # self.optim_model.optimize()
         loss = 0
         dummy_model.params.ScenarioNumber = 0
         for i in range(c_pred.size()[0]):
+            index = self.c.tolist().index(c[i:i+1,:].flatten().tolist())
+            self.optim_model.params.ScenarioNumber = index
             loss += -1 * dummy_model.getAttr('ScenNObjVal') \
-                    + 2 * torch.dot(c_pred[i:i+1,:].flatten(),torch.tensor(self.__keys[self.c[i:i+1,:]].getAttr('X'))) \
-                    - self.__keys[self.c[i:i+1,:]].getAttr('ObjVal')
+                    + 2 * torch.dot(c_pred[i:i+1,:].flatten(),torch.tensor(self.__x[index])) \
+                    - self.__obj_val[index]
             dummy_model.params.ScenarioNumber += 1
         if reduction == 'sum':
-            return loss
+            return float(loss)
         elif reduction == 'mean':
-            return loss / c_pred.size()[0]
+            return float(loss / c_pred.size()[0])
 
     def SPO_loss(self, c, c_pred, reduction = 'mean'):
         '''
@@ -69,21 +75,29 @@ class SPOPlus:
         :reduction: Determines whether to return total or average loss. Takes values 'mean' or 'sum'.
         :return: The SPO loss value
         '''
-        self.dummy_model.setAttr('NumScenarios', c_pred.size()[0])
-        self.dummy_model.Params.params.ScenarioNumber = 0
+        self.optim_model.update()
+        dummy_model = self.optim_model.copy()
+        dummy_model.setAttr('NumScenarios', c_pred.size()[0])
+        dummy_model.params.ScenarioNumber = 0
         for i in range(c_pred.size()[0]):
-            self.dummy_model.setAttr('ScenNObj',c_pred[i:i+1,:].flatten().numpy())
-            self.dummy_model.params.ScenarioNumber += 1
-        self.dummy_model.optimize()
+            dummy_model.setObjective(quicksum(c[i:i+1,:].flatten().tolist()[k]
+                                              * dummy_model.getVars()[k]
+                                              for k in range(c_pred.size()[0])),GRB.MINIMIZE)
+            dummy_model.params.ScenarioNumber += 1
+        dummy_model.optimize()
+        # self.optim_model.optimize()
         loss = 0
-        self.dummy_model.params.ScenarioNumber = 0
+        dummy_model.params.ScenarioNumber = 0
         for i in range(c_pred.size()[0]):
-            loss += torch.dot(c[i:i+1,:].flatten(),self.dummy_model.getAttr('ScenNX')) \
-                    - self.__keys[c[i:i+1,:]].getAttr('ObjVal')
+            index = self.c.tolist().index(c[i:i+1, :].flatten().tolist())
+            self.optim_model.params.ScenarioNumber = index
+            loss += torch.dot(c[i:i+1,:].flatten(),torch.tensor(dummy_model.getAttr('ScenNX'))) \
+                    - self.__obj_val[index]
+            dummy_model.params.ScenarioNumber += 1
         if reduction == 'sum':
-            return loss
+            return float(loss)
         elif reduction == 'mean':
-            return loss / c_pred.size()[0]
+            return float(loss / c_pred.size()[0])
 
 
 

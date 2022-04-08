@@ -43,12 +43,12 @@ def create_grid_graph(d,c):
     return grid
 
 # First test is for the shortest path problem in which we have a grid DAG with weights given by c
-X, c = generate_data(n=2000, p=4, d=5, deg=3, epsilon=1)
+X, c = generate_data(n=100, p=4, d=5, deg=3, epsilon=1)
 grid = create_grid_graph(d = 5,c = c[0:1,:].flatten())
 vertices = list(grid.nodes)
 arcs = list(grid.edges)
 cost = {arc: grid[arc[0]][arc[1]]['weight'] for arc in arcs}
-c_test = [float(i) for i in range(40)]
+#c_test = [float(i) for i in range(40)]
 
 model = Model('multiscenario')
 x = model.addVars(arcs,vtype=GRB.BINARY, name='x')
@@ -62,14 +62,22 @@ model.NumScenarios = X.size()[0]
 model.params.scenarioNumber = 0
 for i in range(X.size()[0]):
     for arc in arcs:
-        x[arc].setAttr('Obj',c[i:i+1].flatten().tolist()[arcs.index(arc)])
+        x[arc].setAttr('ScenNObj',c[i:i+1,:].flatten().tolist()[arcs.index(arc)])
     model.params.scenarioNumber += 1
 
-
 #model.optimize()
-#model.params.scenarioNumber = 2
-#foo = model.singleScenarioModel()
-#print(foo.getAttr('Obj'))
+#model.params.scenarioNumber = 0
+#print(model.singleScenarioModel())
+# model.params.scenarioNumber = 0
+# for i in range(X.size()[0]):
+#     #print(model.getAttr('ScenNObj'))
+#     model.params.scenarioNumber += 1
+# model.params.scenarioNumber = 2
+# foo = model.singleScenarioModel()
+# model.params.scenarioNumber = 3
+# boo = model.singleScenarioModel()
+# print(foo.getAttr('Obj'))
+# print(boo.getAttr('Obj'))
 
 #model.setObjective(quicksum(2 * x[arc] for arc in arcs), GRB.MINIMIZE)
 #model.setObjective(quicksum(c_test[i] * model.getVars()[i] for i in range(len(c_test))), GRB.MINIMIZE)
@@ -92,6 +100,5 @@ for i in range(X.size()[0]):
 #print(model_2.optimize())
 #rint(model_2.getAttr('Obj'))
 SPO_obj = SPOPlus.SPOPlus(X,model)
-print(SPO_obj.SPO_Plus_Loss(c[3:4,:],torch.arange(20,60).view(1,-1)))
-
-
+print(SPO_obj.SPO_Plus_Loss(c[1:2,:],torch.arange(20.,60.).view(1,40)))
+print(SPO_obj.SPO_loss(c[1:2,:],torch.arange(20.,60.).view(1,40)))
