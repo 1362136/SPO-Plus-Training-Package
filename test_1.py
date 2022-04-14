@@ -52,18 +52,18 @@ def sample_data_batch_SGD(size, n):
     sampled_index = torch.randint(high=n, size=(size,))
     return sampled_index
 
-def train_batch_SPO_plus(SPO,model,opt,batch_size):
-    sample_index = sample_data_batch_SGD(batch_size,1300)
-    c_pred = torch.index_select(model(SPO.X_train),0,sample_index)
+def train_batch_SPO_plus(X_train,SPO,model,opt,batch_size):
+    sample_index = sample_data_batch_SGD(batch_size,X_train.size()[0])
+    c_pred = torch.index_select(model(X_train),0,sample_index)
     c = torch.index_select(SPO.c,0,sample_index)
     l = SPO.SPO_Plus_Loss(c,c_pred)
     l.backward()
     opt.step()
     opt.zero_grad()
 
-def train_batch(SPO,model,opt,batch_size,loss_func):
-    sample_index = sample_data_batch_SGD(batch_size, 1300)
-    c_pred = model(torch.index_select(SPO.X_train,dim = 0,index = sample_index))
+def train_batch(X_train,SPO,model,opt,batch_size,loss_func):
+    sample_index = sample_data_batch_SGD(batch_size, X_train.size()[0])
+    c_pred = model(torch.index_select(X_train,dim = 0,index = sample_index))
     c = torch.index_select(SPO.c,dim = 0,index = sample_index)
     l = loss_func(c_pred,c)
     l.backward()
@@ -71,41 +71,91 @@ def train_batch(SPO,model,opt,batch_size,loss_func):
     opt.zero_grad()
 
 
-def fit_and_evaluate_SPO_plus(model,SPO,n_epochs,batch_size,optimizer,scheduler):
-    # B = torch.zeros(n_epochs, 40, 4)  # The parameters of the model listed for each epoch.
-    # running_avg_B = torch.zeros(n_epochs, 40, 4)
-    # lr_list = []
-    best_param = []
-    best_loss = []
-    best_loss.append(SPO.SPO_Plus_Loss(SPO.c_train, model(SPO.X_train)))
-    best_param.append(list(model.parameters())[0].detach())
+def fit_and_evaluate_SPO_plus(X_train,X_test,c_test,model,SPO,n_epochs,batch_size,optimizer,scheduler):
+    B = torch.zeros(n_epochs, 40, 4)  # The parameters of the model listed for each epoch.
+    running_avg_B = torch.zeros(n_epochs, 40, 4)
+    lr_list = []
+    # best_param = []
+    # best_loss = []
+    # best_loss.append(SPO.SPO_Plus_Loss(c_train, model(X_train)))
+    # best_param.append(list(model.parameters())[0].detach())
     for i in range(n_epochs):
-        # for j in model.parameters():
-        #     lr_list.append(scheduler.optimizer.param_groups[0]['lr'])
-        #     B[i] = torch.tensor([lr_list[i]])*j.detach()
-        # running_avg_B[i] = (1 / sum(lr_list)) * torch.sum(B, dim=0)
-        sample_index = sample_data_batch_SGD(batch_size, 1300)
-        c_pred = torch.index_select(model(SPO.X_train), 0, sample_index)
-        c = torch.index_select(SPO.c, 0, sample_index)
-        l = SPO.SPO_Plus_Loss(c, c_pred)
-        l.backward()
-        optimizer.step()
-        x = SPO.SPO_Plus_Loss(SPO.c_train, model(SPO.X_train))
-        if best_loss[-1] <= x:
-            best_loss.append(best_loss[-1])
-            best_param.append(best_param[-1])
-        else:
-            best_loss.append(x)
-            best_param.append(list(model.parameters())[0].detach())
-        optimizer.zero_grad()
+        for j in model.parameters():
+            lr_list.append(scheduler.optimizer.param_groups[0]['lr'])
+            B[i] = torch.tensor([lr_list[i]])*j.detach()
+        running_avg_B[i] = (1 / sum(lr_list)) * torch.sum(B, dim=0)
+        train_batch_SPO_plus(X_train,SPO,model,optimizer,batch_size)
+        # sample_index = sample_data_batch_SGD(batch_size, 700)
+        # c_pred = torch.index_select(model(SPO.X_train), 0, sample_index)
+        # c = torch.index_select(SPO.c, 0, sample_index)
+        # l = SPO.SPO_Plus_Loss(c, c_pred)
+        # l.backward()
+        # optimizer.step()
+        # x = SPO.SPO_Plus_Loss(SPO.c_train, model(SPO.X_train))
+        # if best_loss[-1] <= x:
+        #     best_loss.append(best_loss[-1])
+        #     best_param.append(best_param[-1])
+        # else:
+        #     best_loss.append(x)
+        #     best_param.append(list(model.parameters())[0].detach())
+        # optimizer.zero_grad()
         scheduler.step()
-    model.weight = torch.nn.Parameter(best_param[-1])
-    return SPO.SPO_loss(SPO.c_test, model(SPO.X_test), reduction = 'normalized')
+    model.weight = torch.nn.Parameter(running_avg_B[-1])
+    return SPO.SPO_loss(c_test, model(X_test), reduction = 'normalized')
 
-def fit_and_evaluate(model,SPO,n_epochs,batch_size,optimizer,loss):
+def fit_and_evaluate(X_train,X_test,c_test,model,SPO,n_epochs,batch_size,optimizer,loss):
     for i in range(n_epochs):
-        train_batch(SPO = SPO,model = model,opt = optimizer,batch_size = batch_size,loss_func = loss)
-    return SPO.SPO_loss(SPO.c_test, model(SPO.X_test), reduction = 'normalized')
+        train_batch(X_train=X_train,SPO = SPO,model = model,opt = optimizer,batch_size = batch_size,loss_func = loss)
+    return SPO.SPO_loss(c_test, model(X_test), reduction = 'normalized')
+
+def cross_validation_SPO(grid,num_folds,SPO,n_epochs,batch_size):
+    average_scores = []
+    X_folds = list(torch.split(tensor=SPO.X_train,split_size_or_sections=SPO.X_train.size()[0] // num_folds))
+    c_folds = list(torch.split(tensor=SPO.c_train,split_size_or_sections=SPO.c_train.size()[0] // num_folds))
+    idx_list = torch.arange(len(X_folds)).tolist()
+    for i in grid:
+        sum = 0
+        for j in range(len(X_folds)):
+            model = nn.Linear(4, 40, bias=False)
+            opt = optim.Adam(model.parameters(), lr=0.1,weight_decay=i)
+            sched = optim.lr_scheduler.LambdaLR(opt, lambda epoch: (1 / (math.sqrt(epoch + 1))))
+            valid = X_folds[j]
+            idx_list.remove(j)
+            train = X_folds[idx_list[0]]
+            for k in range(1, len(idx_list)):
+                train = torch.cat((train, X_folds[idx_list[k]]), dim=0)
+            sum += fit_and_evaluate_SPO_plus(train,valid,c_folds[j],model,SPO,n_epochs,batch_size,opt,sched)
+            idx_list.insert(j, j)
+        average_scores.append(sum / len(X_folds))
+    opt_param = grid[average_scores.index(min(average_scores))]
+    model = nn.Linear(4, 40, bias=False)
+    opt = optim.Adam(model.parameters(), lr=0.1, weight_decay=opt_param)
+    sched = optim.lr_scheduler.LambdaLR(opt, lambda epoch: (1 / (math.sqrt(epoch + 1))))
+    return fit_and_evaluate_SPO_plus(SPO.X_train,SPO.X_test,SPO.c_test,model,SPO,n_epochs,batch_size,opt,sched)
+
+def cross_validation(grid,num_folds,SPO,n_epochs,batch_size,loss):
+    average_scores = []
+    X_folds = list(torch.split(tensor=SPO.X_train,split_size_or_sections=SPO.X_train.size()[0] // num_folds))
+    c_folds = list(torch.split(tensor=SPO.c_train,split_size_or_sections=SPO.c_train.size()[0] // num_folds))
+    idx_list = torch.arange(len(X_folds)).tolist()
+    for i in grid:
+        sum = 0
+        for j in range(len(X_folds)):
+            model = nn.Linear(4, 40, bias=False)
+            opt = optim.Adam(model.parameters(), lr=0.5,weight_decay=i)
+            valid = X_folds[j]
+            idx_list.remove(j)
+            train = X_folds[idx_list[0]]
+            for k in range(1,len(idx_list)):
+                train = torch.cat((train,X_folds[idx_list[k]]),dim=0)
+            sum += fit_and_evaluate(train,valid,c_folds[j],model,SPO,n_epochs,batch_size,opt,loss)
+            idx_list.insert(j,j)
+        average_scores.append(sum / len(X_folds))
+    opt_param = grid[average_scores.index(min(average_scores))]
+    model = nn.Linear(4, 40, bias=False)
+    opt = optim.Adam(model.parameters(), lr=0.1, weight_decay=opt_param)
+    return fit_and_evaluate(SPO.X_train,SPO.X_test,SPO.c_test,model,SPO,n_epochs,batch_size,opt,loss)
+
 
 
 
@@ -116,7 +166,7 @@ def SPO_experiment(degree):
     norm_loss_2 = []
     norm_loss_3 = []
     for i in range(3):
-        X, c = generate_data(n=2000, p=4, d=5, deg=degree, epsilon=0.5)
+        X, c = generate_data(n=1000, p=4, d=5, deg=degree, epsilon=0.5)
         # Create the multi-scenario optimization model
         grid = create_grid_graph(d=5, c=c[0:1, :].flatten())
         vertices = list(grid.nodes)
@@ -137,20 +187,26 @@ def SPO_experiment(degree):
                 x[arc].setAttr('ScenNObj', c[j:j + 1, :].flatten().tolist()[arcs.index(arc)])
             model.params.scenarioNumber += 1
         # Instantiate prediction models for experiment
-        SPO_obj = SPOPlus.SPOPlus(X, model, train_test = 1300)
-        model_1 = nn.Linear(4, 40, bias=False)
-        model_2 = nn.Linear(4, 40, bias=False)
-        model_3 = nn.Linear(4, 40, bias=False)
-        opt_1 = optim.Adam(model_1.parameters(),lr=0.1)
-        opt_2 = optim.Adam(model_2.parameters(),lr=0.1)
-        opt_3 = optim.Adam(model_3.parameters(),lr=0.1)
-        sched = optim.lr_scheduler.LambdaLR(opt_3,lambda epoch : (1 / (epoch + 1)))
+        # model_1 = nn.Linear(4, 40, bias=False)
+        # model_2 = nn.Linear(4, 40, bias=False)
+        # model_3 = nn.Linear(4, 40, bias=False)
+        # opt_1 = optim.Adam(model_1.parameters(),lr=0.1)
+        # opt_2 = optim.Adam(model_2.parameters(),lr=0.1)
+        # opt_3 = optim.Adam(model_3.parameters(),lr=0.1)
+        # sched = optim.lr_scheduler.LambdaLR(opt_3,lambda epoch : (1 / (epoch + 1)))
+        SPO = SPOPlus.SPOPlus(X, model, train_test=700)
         MSE = nn.MSELoss(reduction="mean")
         L1 = nn.L1Loss(reduction="mean")
+        grid = np.logspace(-6,2,num=10)
 
-        norm_loss_1.append(fit_and_evaluate(model_1, SPO_obj, 100, 10, opt_1, MSE))
-        norm_loss_2.append(fit_and_evaluate(model_2, SPO_obj, 100, 10, opt_2, L1))
-        norm_loss_3.append(fit_and_evaluate_SPO_plus(model_3, SPO_obj, 100, 10, opt_3, sched))
+        # norm_loss_1.append(fit_and_evaluate(SPO.X_train,SPO.X_test,SPO.c_test,model_1, SPO_obj, 80, 10, opt_1, MSE))
+        # norm_loss_2.append(fit_and_evaluate(SPO.X_train,SPO.X_test,SPO.c_test,model_2, SPO_obj, 80, 10, opt_2, L1))
+        # norm_loss_3.append(fit_and_evaluate_SPO_plus(SPO.X_train,SPO.X_test,SPO.c_test,model_3, SPO_obj, 80, 10, opt_3, sched))
+
+        norm_loss_1.append(cross_validation(grid,5,SPO,1,10,MSE))
+        norm_loss_2.append(cross_validation(grid, 5, SPO, 1, 10, L1))
+        norm_loss_3.append(cross_validation_SPO(grid, 5, SPO, 1, 10))
+
         x = len(norm_loss_1)
         return sum(norm_loss_1)/x, sum(norm_loss_2)/x, sum(norm_loss_3)/x
 

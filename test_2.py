@@ -25,8 +25,7 @@ for j in range(10):
 SPO_obj = SPOPlus.SPOPlus(torch.tensor([[1],[2],[3],[4],[5],[6],[7],[8],[9],[10]]),model,5)
 c = SPO_obj.get_output()
 hinge = HingeLoss()
-c_pred = torch.rand(2).view(2,-1)
-print(hinge(c_pred,c[0:2,:]))
-print(SPO_obj.SPO_Plus_Loss(c[0:2,:],c_pred))
-#print(SPO_obj.__dict__)
+c_pred = torch.rand(2).view(1,-1)
+print(hinge(c_pred,c[0:1,:]))
+print(SPO_obj.SPO_Plus_Loss(c[0:1,:],c_pred))
 
