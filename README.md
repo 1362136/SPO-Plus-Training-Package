@@ -6,11 +6,11 @@ This package faciliates training models that fall under the "predict then optimi
 ### Functions
 The package provides functions for evaluating the SPO-Plus and the SPO loss between predicted and true parameters. The SPO-Plus loss function is a convex surrogate of the SPO loss function; so the SPO-Plus loss function is used for training the prediction model and the SPO loss function is used as a metric of accuracy. In order to use the loss functions, an SPOPlus object must be created.
 
-1. Constructor for generating an instance the SPOPlus class
+1. Constructor for generating an instance the SPOPlus class. Each input of the data set corresponds to a output label vector which is an objective coefficient vector for a scenario of the optimization model. The indices of  input vectors in the tensor X should be in numerical correspondence with the scenarios of the multisceanrio model. Also, each scenario should have the same constraints and decision variables; the objective coefficients are the only parametrs that change across scenarios.
 ```python
 def __init__(self,X,optim_model,train_test):
 '''
-:param X: Input data set that is used for the prediction model
+:param X: Input data set that is used for the prediction model (tensor)
 :param optim_model: A Gurobi Multi-Scenario Model
 '''  
 ```
@@ -40,5 +40,14 @@ def get_output(self):
     :reduction: Determines whether to return total, average, or normalized SPO loss. Takes values 'mean','sum', or 'normalized'
     :return: The SPO loss value
     '''
+```
+5. Change optimization model function
+```python
+        def change_model(self, X_new, c_new, train_test):
+        '''
+        :param X_new: The new set of input data
+        :param c_new: The new outputs
+        :param train_test: The index where X_new is split into train and test data
+        '''
 ```
 ### Workflow Example
