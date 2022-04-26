@@ -6,7 +6,7 @@ This package faciliates training models that fall under the "predict then optimi
 ### Functions
 The package provides functions for evaluating the SPO-Plus and the SPO loss between predicted and true parameters. The SPO-Plus loss function is a convex surrogate of the SPO loss function; so the SPO-Plus loss function is used for training the prediction model and the SPO loss function is used as a metric of accuracy. In order to use the loss functions, an SPOPlus object must be created.
 
-1. Constructor for generating an instance the SPOPlus class. Each input of the data set corresponds to a output label vector which is an objective coefficient vector for a scenario of the optimization model. The indices of  input vectors in the tensor X should be in numerical correspondence with the scenarios of the multisceanrio model. Also, each scenario should have the same constraints and decision variables; the objective coefficients are the only parametrs that change across scenarios.
+1. Constructor for generating an instance the SPOPlus class. Each input of the data set corresponds to a output label vector which is an objective coefficient vector for a scenario of the optimization model. The indices of  input vectors in the tensor X should be in numerical correspondence with the scenarios of the multisceanrio model. Also, each scenario should have the same constraints and decision variables; the objective coefficients are the only parameters that change across scenarios.
 ```python
 def __init__(self,X,optim_model,train_test):
 '''
