@@ -51,7 +51,7 @@ def get_output(self):
         '''
 ```
 ### Workflow Example
-We go through the pipeline of setting up the Gurobi Multi-Scenario model for the Shortest Paths LP on a 5 x 5 grid graph. The edge costs of the graph can be represented as 40 dimensional vector. We will have 1000 such vectors aggregated into a 1000 x 40 dimensional tensor called c. Each of the vectors in c will be associated with some input vector of dimension 4. Thus we will have a 1000 such vectors aggregated into a 1000 x 4 dimensional tensor called X.  First, we synthetically generate X and c.
+We go through the pipeline of setting up the Gurobi Multi-Scenario model for the Shortest Paths LP on a 5 x 5 grid graph. The edge costs of the graph can be represented as 40 dimensional vector. We will have 1000 such vectors aggregated into a 1000 x 40 dimensional tensor called c. Each of the vectors in c will be associated with some input vector of dimension 4. Thus we will have a 1000 such vectors aggregated into a 1000 x 4 dimensional tensor called X.  First, we synthetically generate X and c. After we generate the data, we create the 5 x 5 grid graph using the NetworkX library and using the tensor c. Finally we create the Gurobi Multiscenario model (each scenario will have a different vector in c as the objective coeffcients) for the shortest paths linear program. The code below shows the functions that are used to generate the data and create the grid graph.
 ```python
 def generate_data(n,p,d,deg,epsilon):
     '''
@@ -75,7 +75,6 @@ def generate_data(n,p,d,deg,epsilon):
     c = (torch.pow(((1 / math.sqrt(p)) * torch.matmul(B,X) + 3.0), deg) + 1.0) * noise
     return torch.t(X), torch.t(c)
 ```
-After we generate the data, we create the 5 x 5 grid graph using the tensor c.
 ```python
 def create_grid_graph(d,c):
     '''
@@ -91,4 +90,29 @@ def create_grid_graph(d,c):
         grid[e[0]][e[1]]['weight'] = float(c[k])
         k += 1
     return grid
+```
+In the case we are working in, we make the following calls to generate the data
+```python
+ X, c = generate_data(n=1000, p=4, d=5, deg=degree, epsilon=0.5)
+        grid = create_grid_graph(d=5, c=c[0:1, :].flatten())
+```
+Note that we are setting the initial weights of the graph as the first vector in the tensor c; however, this choice of intial weights does not matter as the only purpose for creating graph is to faciliate setting up the Gurobi Optimization problem.
+```python
+vertices = list(grid.nodes)
+        arcs = list(grid.edges)
+        cost = {arc: grid[arc[0]][arc[1]]['weight'] for arc in arcs}
+        model = Model('multiscenario')
+        x = model.addVars(arcs, vtype=GRB.BINARY, name='x')
+        model.setObjective(quicksum(cost[arc] * x[arc] for arc in arcs), GRB.MINIMIZE)
+        model.addConstr(quicksum(x[(0, j)] for j in grid.successors(0)) == 1, name='source vertex constraint')
+        model.addConstrs(quicksum(x[(i, j)] for j in grid.successors(i)) -
+                         quicksum(x[(j, i)] for j in grid.predecessors(i)) == 0 for i in vertices if
+                         int(i) != 0 and int(i)
+                         != 25 - 1)
+        model.addConstr(quicksum(x[(j, 25 - 1)] for j in grid.predecessors(25 - 1)) == 1)
+        model.NumScenarios = X.size()[0]
+        for j in range(X.size()[0]):
+            for arc in arcs:
+                x[arc].setAttr('ScenNObj', c[j:j + 1, :].flatten().tolist()[arcs.index(arc)])
+            model.params.scenarioNumber += 1
 ```
