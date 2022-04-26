@@ -50,6 +50,8 @@ def get_output(self):
         :param train_test: The index where X_new is split into train and test data
         '''
 ```
+### SPOPlus Object Attributes
+After creating an instance of the SPOPlus class using the constructor, one can access the attributes X_test, X_train, c_test, and c_train to faciliate training and evaluating the prediction models.
 ### Workflow Example
 We go through the pipeline of setting up the Gurobi Multi-Scenario model for the Shortest Paths LP on a 5 x 5 grid graph. The edge costs of the graph can be represented as 40 dimensional vector. We will have 1000 such vectors aggregated into a 1000 x 40 dimensional tensor called c. Each of the vectors in c will be associated with some input vector of dimension 4. Thus we will have a 1000 such vectors aggregated into a 1000 x 4 dimensional tensor called X.  First, we synthetically generate X and c. After we generate the data, we create the 5 x 5 grid graph using the NetworkX library and using the tensor c. Finally we create the Gurobi Multiscenario model (each scenario will have a different vector in c as the objective coeffcients) for the shortest paths linear program. The code below shows the functions that are used to generate the data and create the grid graph.
 ```python
