@@ -51,3 +51,44 @@ def get_output(self):
         '''
 ```
 ### Workflow Example
+We go through the pipeline of setting up the Gurobi Multi-Scenario model for the Shortest Paths LP on a 5 x 5 grid graph. The edge costs of the graph can be represented as 40 dimensional vector. We will have 1000 such vectors aggregated into a 1000 x 40 dimensional tensor called c. Each of the vectors in c will be associated with some input vector of dimension 4. Thus we will have a 1000 such vectors aggregated into a 1000 x 4 dimensional tensor called X.  First, we synthetically generate X and c.
+```python
+def generate_data(n,p,d,deg,epsilon):
+    '''
+    :param n: Number of data points
+    :param p: Dimension of each input vector
+    :param d: dimension of the grid graph
+    :param deg: degree of representing model misspecification
+    :param epsilon: noise term
+    :return:
+    '''
+    # Initialize the matrix of features; sample feature elements from N(0,1) dist.
+    X = torch.randn(p,n)
+
+    # Initialize matrix that maps features to cost vectors
+    B = torch.bernoulli(0.5 * torch.ones(2*d*(d-1),p).float())
+
+    # sample noise matrix from uniform dist. [1 - epsilon, 1 + epsilon]
+    noise = 2.0 * epsilon * torch.rand(2*d*(d-1),n) + 1 - epsilon
+
+    # Generate the output cost vectors from the input data
+    c = (torch.pow(((1 / math.sqrt(p)) * torch.matmul(B,X) + 3.0), deg) + 1.0) * noise
+    return torch.t(X), torch.t(c)
+```
+After we generate the data, we create the 5 x 5 grid graph using the tensor c.
+```python
+def create_grid_graph(d,c):
+    '''
+    :param d: denotes the dimensions of the grid graph
+    :param c: denotes the weight vector for the graph
+    :return: A n x n directed grid graph with weights from c.
+    '''
+    grid = nx.DiGraph()
+    grid.add_edges_from([(j * d + i, j * d + i + 1) for j in range(d) for i in range(d-1)])
+    grid.add_edges_from([(i + d * j, i + d * (j + 1)) for i in range(d) for j in range(d-1)])
+    k = 0
+    for e in list(grid.edges()):
+        grid[e[0]][e[1]]['weight'] = float(c[k])
+        k += 1
+    return grid
+```
