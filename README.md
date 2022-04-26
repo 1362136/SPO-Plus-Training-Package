@@ -93,12 +93,12 @@ def create_grid_graph(d,c):
 ```
 In the case we are working in, we make the following calls to generate the data
 ```python
- X, c = generate_data(n=1000, p=4, d=5, deg=degree, epsilon=0.5)
+        X, c = generate_data(n=1000, p=4, d=5, deg=degree, epsilon=0.5)
         grid = create_grid_graph(d=5, c=c[0:1, :].flatten())
 ```
-Note that we are setting the initial weights of the graph as the first vector in the tensor c; however, this choice of intial weights does not matter as the only purpose for creating graph is to faciliate setting up the Gurobi Optimization problem.
+Note that we are setting the initial weights of the graph as the first vector in the tensor c; however, this choice of initial weights does not matter as the only purpose for creating graph is to faciliate setting up the Gurobi Optimization problem.
 ```python
-vertices = list(grid.nodes)
+        vertices = list(grid.nodes)
         arcs = list(grid.edges)
         cost = {arc: grid[arc[0]][arc[1]]['weight'] for arc in arcs}
         model = Model('multiscenario')
@@ -116,3 +116,4 @@ vertices = list(grid.nodes)
                 x[arc].setAttr('ScenNObj', c[j:j + 1, :].flatten().tolist()[arcs.index(arc)])
             model.params.scenarioNumber += 1
 ```
+The first two lines of the code create index lists of the nodes and edges of the graph. Starting from line 4, we initialize the Gurobi model and add decision variables and constraints that are consistent with the Linear program formulation for the shortest paths problem
