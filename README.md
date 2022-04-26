@@ -116,4 +116,12 @@ Note that we are setting the initial weights of the graph as the first vector in
                 x[arc].setAttr('ScenNObj', c[j:j + 1, :].flatten().tolist()[arcs.index(arc)])
             model.params.scenarioNumber += 1
 ```
-The first two lines of the code create index lists of the nodes and edges of the graph. Starting from line 4, we initialize the Gurobi model and add decision variables and constraints that are consistent with the Linear program formulation for the shortest paths problem
+The first two lines of the code create index lists of the nodes and edges of the graph. Starting from line 4, we initialize the Gurobi model and add decision variables and constraints that are consistent with the Linear program formulation for the shortest paths problem and iterate through the number of scenarios in the model to change the objective coefficients. We then feed the Gurobi Model and the tensor X into the constructor of the SPOPlus class.
+```python
+SPO = SPOPlus.SPOPlus(X, model, train_test=700)
+```
+Creating the constructor automatically splits the data into training and test sets. We can retrieve test data by the object attributes X_test, X_train, c_test, c_train. Once the constructor is created and once a prediction model is defined, one can use pytorch's autograd functionality following to compute subgradients of the loss function
+```python
+loss  = SPO.SPO_Plus_Loss(c, pred_model(X))
+loss.backward()
+```
