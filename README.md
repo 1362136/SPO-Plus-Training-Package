@@ -41,7 +41,7 @@ def get_output(self):
     :return: The SPO loss value
     '''
 ```
-5. Change optimization model function
+5. Change optimization model function. Changes the input and ouput data of the prediction model while leaving the constraints and decision variables of the optimization problem the same.
 ```python
         def change_model(self, X_new, c_new, train_test):
         '''
