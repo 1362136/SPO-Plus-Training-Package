@@ -8,7 +8,11 @@ class HingeLoss(torch.nn.Module):
         super(HingeLoss, self).__init__()
 
     def forward(self, c_pred, c):
-        return (1 - 2*torch.mul(c_pred,c)).flatten() if (1 - 2*torch.mul(c_pred,c)) >= 0 else 0
+        loss = 0
+        for i in range(c_pred.size()[0]):
+            loss += (1 - 2*torch.mul(c_pred[i:i+1,:],c[i:i+1,:]))\
+                if (1 - 2*torch.mul(c_pred[i:i+1,:],c[i:i+1,:])) >= 0 else 0
+        return loss
 
 
 model = Model()
@@ -25,7 +29,8 @@ for j in range(10):
 SPO_obj = SPOPlus.SPOPlus(torch.tensor([[1],[2],[3],[4],[5],[6],[7],[8],[9],[10]]),model,5)
 c = SPO_obj.get_output()
 hinge = HingeLoss()
-c_pred = torch.rand(2).view(1,-1)
-print(hinge(c_pred,c[0:1,:]))
-print(SPO_obj.SPO_Plus_Loss(c[0:1,:],c_pred))
+c_pred = torch.rand(2).view(2,-1)
+print(hinge(c_pred,c[0:2,:]))
+print(SPO_obj.SPO_Plus_Loss(c[0:2,:],c_pred[0:2,:],reduction='sum'))
+SPO_obj.change_model(torch.tensor([[1],[2],[3],[4]]),torch.tensor([[1],[-1],[1],[-1]]),2)
 

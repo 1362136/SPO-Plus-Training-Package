@@ -7,6 +7,7 @@ from torch import nn, optim
 import numpy as np
 import matplotlib.pyplot as plt
 from timeit import default_timer as timer
+import copy
 
 def generate_data(n,p,d,deg,epsilon):
     '''
@@ -72,35 +73,12 @@ def train_batch(X_train,SPO,model,opt,batch_size,loss_func):
 
 
 def fit_and_evaluate_SPO_plus(X_train,X_test,c_test,model,SPO,n_epochs,batch_size,optimizer,scheduler):
-    B = torch.zeros(n_epochs, 40, 4)  # The parameters of the model listed for each epoch.
-    running_avg_B = torch.zeros(n_epochs, 40, 4)
     lr_list = []
-    # best_param = []
-    # best_loss = []
-    # best_loss.append(SPO.SPO_Plus_Loss(c_train, model(X_train)))
-    # best_param.append(list(model.parameters())[0].detach())
     for i in range(n_epochs):
         for j in model.parameters():
             lr_list.append(scheduler.optimizer.param_groups[0]['lr'])
-            B[i] = torch.tensor([lr_list[i]])*j.detach()
-        running_avg_B[i] = (1 / sum(lr_list)) * torch.sum(B, dim=0)
         train_batch_SPO_plus(X_train,SPO,model,optimizer,batch_size)
-        # sample_index = sample_data_batch_SGD(batch_size, 700)
-        # c_pred = torch.index_select(model(SPO.X_train), 0, sample_index)
-        # c = torch.index_select(SPO.c, 0, sample_index)
-        # l = SPO.SPO_Plus_Loss(c, c_pred)
-        # l.backward()
-        # optimizer.step()
-        # x = SPO.SPO_Plus_Loss(SPO.c_train, model(SPO.X_train))
-        # if best_loss[-1] <= x:
-        #     best_loss.append(best_loss[-1])
-        #     best_param.append(best_param[-1])
-        # else:
-        #     best_loss.append(x)
-        #     best_param.append(list(model.parameters())[0].detach())
-        # optimizer.zero_grad()
         scheduler.step()
-    model.weight = torch.nn.Parameter(running_avg_B[-1])
     return SPO.SPO_loss(c_test, model(X_test), reduction = 'normalized')
 
 def fit_and_evaluate(X_train,X_test,c_test,model,SPO,n_epochs,batch_size,optimizer,loss):
@@ -108,7 +86,7 @@ def fit_and_evaluate(X_train,X_test,c_test,model,SPO,n_epochs,batch_size,optimiz
         train_batch(X_train=X_train,SPO = SPO,model = model,opt = optimizer,batch_size = batch_size,loss_func = loss)
     return SPO.SPO_loss(c_test, model(X_test), reduction = 'normalized')
 
-def cross_validation_SPO(grid,num_folds,SPO,n_epochs,batch_size):
+def cross_validation_SPO(grid,num_folds,SPO,n_epochs,batch_size,model):
     average_scores = []
     X_folds = list(torch.split(tensor=SPO.X_train,split_size_or_sections=SPO.X_train.size()[0] // num_folds))
     c_folds = list(torch.split(tensor=SPO.c_train,split_size_or_sections=SPO.c_train.size()[0] // num_folds))
@@ -116,7 +94,7 @@ def cross_validation_SPO(grid,num_folds,SPO,n_epochs,batch_size):
     for i in grid:
         sum = 0
         for j in range(len(X_folds)):
-            model = nn.Linear(4, 40, bias=False)
+            model = copy.deepcopy(model)
             opt = optim.Adam(model.parameters(), lr=0.1,weight_decay=i)
             sched = optim.lr_scheduler.LambdaLR(opt, lambda epoch: (1 / (math.sqrt(epoch + 1))))
             valid = X_folds[j]
@@ -128,12 +106,12 @@ def cross_validation_SPO(grid,num_folds,SPO,n_epochs,batch_size):
             idx_list.insert(j, j)
         average_scores.append(sum / len(X_folds))
     opt_param = grid[average_scores.index(min(average_scores))]
-    model = nn.Linear(4, 40, bias=False)
+    model = copy.deepcopy(model)
     opt = optim.Adam(model.parameters(), lr=0.1, weight_decay=opt_param)
     sched = optim.lr_scheduler.LambdaLR(opt, lambda epoch: (1 / (math.sqrt(epoch + 1))))
     return fit_and_evaluate_SPO_plus(SPO.X_train,SPO.X_test,SPO.c_test,model,SPO,n_epochs,batch_size,opt,sched)
 
-def cross_validation(grid,num_folds,SPO,n_epochs,batch_size,loss):
+def cross_validation(grid,num_folds,SPO,n_epochs,batch_size,loss,model):
     average_scores = []
     X_folds = list(torch.split(tensor=SPO.X_train,split_size_or_sections=SPO.X_train.size()[0] // num_folds))
     c_folds = list(torch.split(tensor=SPO.c_train,split_size_or_sections=SPO.c_train.size()[0] // num_folds))
@@ -141,8 +119,8 @@ def cross_validation(grid,num_folds,SPO,n_epochs,batch_size,loss):
     for i in grid:
         sum = 0
         for j in range(len(X_folds)):
-            model = nn.Linear(4, 40, bias=False)
-            opt = optim.Adam(model.parameters(), lr=0.5,weight_decay=i)
+            model = copy.deepcopy(model)
+            opt = optim.Adam(model.parameters(), lr=0.1,weight_decay=i)
             valid = X_folds[j]
             idx_list.remove(j)
             train = X_folds[idx_list[0]]
@@ -152,14 +130,9 @@ def cross_validation(grid,num_folds,SPO,n_epochs,batch_size,loss):
             idx_list.insert(j,j)
         average_scores.append(sum / len(X_folds))
     opt_param = grid[average_scores.index(min(average_scores))]
-    model = nn.Linear(4, 40, bias=False)
+    model = copy.deepcopy(model)
     opt = optim.Adam(model.parameters(), lr=0.1, weight_decay=opt_param)
     return fit_and_evaluate(SPO.X_train,SPO.X_test,SPO.c_test,model,SPO,n_epochs,batch_size,opt,loss)
-
-
-
-
-
 
 def SPO_experiment(degree):
     norm_loss_1 = []
@@ -203,38 +176,39 @@ def SPO_experiment(degree):
         # norm_loss_2.append(fit_and_evaluate(SPO.X_train,SPO.X_test,SPO.c_test,model_2, SPO_obj, 80, 10, opt_2, L1))
         # norm_loss_3.append(fit_and_evaluate_SPO_plus(SPO.X_train,SPO.X_test,SPO.c_test,model_3, SPO_obj, 80, 10, opt_3, sched))
 
-        norm_loss_1.append(cross_validation(grid,5,SPO,1,10,MSE))
-        norm_loss_2.append(cross_validation(grid, 5, SPO, 1, 10, L1))
-        norm_loss_3.append(cross_validation_SPO(grid, 5, SPO, 1, 10))
+        norm_loss_1.append(cross_validation(grid,5,SPO,100,10,MSE,nn.Linear(4,40,bias = False)))
+        norm_loss_2.append(cross_validation(grid, 5, SPO, 100, 10, L1,nn.Linear(4,40,bias = False)))
+        norm_loss_3.append(cross_validation_SPO(grid, 5, SPO, 100, 10, nn.Linear(4,40,bias = False)))
 
         x = len(norm_loss_1)
         return sum(norm_loss_1)/x, sum(norm_loss_2)/x, sum(norm_loss_3)/x
 
-start = timer()
-experiment_1 = SPO_experiment(degree = 1)
-experiment_2 = SPO_experiment(degree = 2)
-experiment_3 = SPO_experiment(degree = 4)
-experiment_4 = SPO_experiment(degree = 6)
-experiment_5 = SPO_experiment(degree = 8)
-end = timer()
-print((end - start) / 60)
 
-degrees = [1,2,4,6,8]
-MSE_losses = [experiment_1[0],experiment_2[0],experiment_3[0],experiment_4[0],experiment_5[0]]
-L1_losses = [experiment_1[1],experiment_2[1],experiment_3[1],experiment_4[1],experiment_5[1]]
-SPO_plus_losses = [experiment_1[2],experiment_2[2],experiment_3[2],experiment_4[2],experiment_5[2]]
-
-x = np.arange(len(degrees))
-width = 0.18
-fig, ax = plt.subplots()
-rects1 = ax.bar(x - width, MSE_losses, width, label='MSE loss func')
-rects2 = ax.bar(x, L1_losses, width, label='L1 loss func')
-rects3 = ax.bar(x + width, SPO_plus_losses, width, label='SPO+ loss func')
-
-ax.set_ylabel('Average Normalized SPO error')
-ax.set_xlabel('Degree of Ground Truth')
-ax.set_title('SPO+ vs MSE vs L1')
-ax.set_xticks(x)
-ax.set_xticklabels(degrees)
-ax.legend()
-plt.show()
+# start = timer()
+# experiment_1 = SPO_experiment(degree = 1)
+# experiment_2 = SPO_experiment(degree = 2)
+# experiment_3 = SPO_experiment(degree = 4)
+# experiment_4 = SPO_experiment(degree = 6)
+# experiment_5 = SPO_experiment(degree = 8)
+# end = timer()
+# print((end - start) / 60)
+#
+# degrees = [1,2,4,6,8]
+# MSE_losses = [experiment_1[0],experiment_2[0],experiment_3[0],experiment_4[0],experiment_5[0]]
+# L1_losses = [experiment_1[1],experiment_2[1],experiment_3[1],experiment_4[1],experiment_5[1]]
+# SPO_plus_losses = [experiment_1[2],experiment_2[2],experiment_3[2],experiment_4[2],experiment_5[2]]
+#
+# x = np.arange(len(degrees))
+# width = 0.18
+# fig, ax = plt.subplots()
+# rects1 = ax.bar(x - width, MSE_losses, width, label='MSE loss func')
+# rects2 = ax.bar(x, L1_losses, width, label='L1 loss func')
+# rects3 = ax.bar(x + width, SPO_plus_losses, width, label='SPO+ loss func')
+#
+# ax.set_ylabel('Average Normalized SPO error')
+# ax.set_xlabel('Degree of Ground Truth')
+# ax.set_title('SPO+ vs MSE vs L1')
+# ax.set_xticks(x)
+# ax.set_xticklabels(degrees)
+# ax.legend()
+# plt.show()
