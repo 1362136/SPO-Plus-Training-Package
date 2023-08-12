@@ -10,12 +10,13 @@ import time
 class SPOPlus:
     def __init__(self,X,optim_model,train_test):
         '''
-        :param X_train: Data set that is used for training prediction model
+        :param X: Data set that is used for training prediction model
         :param optim_model: A Gurobi Multi-Scenario Model
+        :param train_test: The index where X is split into train and test data
         '''
         self.X = X
-        self.X_train = X[0:train_test,:]
-        self.X_test = X[train_test:,:]
+        self.X_train = X[0:train_test]
+        self.X_test = X[train_test:]
         self.__x = {}
         self.__obj_val = {}
         optim_model.update()
@@ -32,8 +33,8 @@ class SPOPlus:
             self.c = torch.cat((self.c, torch.tensor(self.optim_model.getAttr('ScenNObj')).view(1, -1)),dim=0)
             # self.__keys[i] = self.optim_model.singleScenarioModel()
             self.optim_model.Params.ScenarioNumber += 1
-        self.c_train = self.c[0:train_test,:]
-        self.c_test = self.c[train_test:,:]
+        self.c_train = self.c[0:train_test]
+        self.c_test = self.c[train_test:]
 
     def get_output(self):
         '''
@@ -102,29 +103,32 @@ class SPOPlus:
         elif reduction == 'normalized':
             return loss / denom
 
-    # def change_model(self, X_new, c_new):
-    #     '''
-    #     :param X_new: The new training set
-    #     :param c_new: The new outputs for the new training set
-    #     :return:
-    #     '''
-    #     self.X_train = X_new
-    #     self.c = c_new
-    #     self.optim_model.update()
-    #     self.optim_model = self.optim_model.copy()
-    #     self.optim_model.setAttr('NumScenarios',c_new.size()[0])
-    #     self.optim_model.params.ScenarioNumber = 0
-    #     for i in range(c_new.size()[0]):
-    #         self.optim_model.setObjective(quicksum(c_new[i:i+1,:].flatten().tolist()[k]
-    #                                           * self.optim_model.getVars()[k]
-    #                                           for k in range(c_new.size()[1])),GRB.MINIMIZE)
-    #         self.optim_model.params.ScenarioNumber += 1
-    #     self.optim_model.optimize()
-    #     self.optim_model.params.ScenarioNumber = 0
-    #     for i in range(c_new.size()[0]):
-    #         self.__x[i] = self.optim_model.getAttr('ScenNX')
-    #         self.__obj_val[i] = self.optim_model.getAttr('ScenNObjVal')
-    #         self.optim_model.params.ScenarioNumber += 1
+    def change_model(self, X_new, c_new, train_test):
+        '''
+        :param X_new: The new set of input data
+        :param c_new: The new outputs
+        :param train_test: The index where X_new is split into train and test data
+        '''
+        self.X = X_new
+        self.X_train = self.X[0:train_test, :]
+        self.X_test = self.X[train_test:, :]
+        self.c = c_new
+        self.c_train = self.c[0:train_test, :]
+        self.c_test = self.c[train_test:, :]
+        self.optim_model.update()
+        self.optim_model = self.optim_model.copy()
+        self.optim_model.setAttr('NumScenarios',c_new.size()[0])
+        self.optim_model.params.ScenarioNumber = 0
+        for i in range(self.c.size()[0]):
+            for j in range(self.c.size()[1]):
+                self.optim_model.getVars()[j].setAttr('ScenNObj',self.c[i:i+1,:].flatten().tolist()[j])
+            self.optim_model.params.ScenarioNumber += 1
+        self.optim_model.optimize()
+        self.optim_model.params.ScenarioNumber = 0
+        for i in range(self.c.size()[0]):
+            self.__x[i] = self.optim_model.getAttr('ScenNX')
+            self.__obj_val[i] = self.optim_model.getAttr('ScenNObjVal')
+            self.optim_model.params.ScenarioNumber += 1
 
 
 
