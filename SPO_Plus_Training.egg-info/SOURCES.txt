@@ -1,0 +1,10 @@
+LICENSE
+README.md
+setup.py
+SPO_Plus_Training/SPOPlus.py
+SPO_Plus_Training/__init__.py
+SPO_Plus_Training/visualize_graph.py
+SPO_Plus_Training.egg-info/PKG-INFO
+SPO_Plus_Training.egg-info/SOURCES.txt
+SPO_Plus_Training.egg-info/dependency_links.txt
+SPO_Plus_Training.egg-info/top_level.txt

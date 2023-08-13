@@ -4,11 +4,11 @@ with open("README.md", "r") as fh:
     description = fh.read()
   
 setuptools.setup(
-    name="test-package",
+    name="SPO_Plus_Training",
     version="0.0.1",
     author="Krishna Kalathur",
     author_email="krishna.kalathur@gmail.com",
-    packages=["test_package"],
+    packages=["SPO_Plus_Training"],
     description="A sample test package",
     long_description=description,
     long_description_content_type="text/markdown",
